@@ -1,0 +1,30 @@
+{
+  "camera_index": 0,
+  "regressor": {
+    "type": "poly",
+    "degree": 3
+  },
+  "smoothing": {
+    "alpha": 0.25
+  },
+  "dwell": {
+    "enabled": true,
+    "time_ms": 700,
+    "radius_px": 30
+  },
+  "blink": {
+    "enabled": false,
+    "ear_threshold": 0.2,
+    "min_duration_ms": 150
+  },
+  "calibration": {
+    "points": 9,
+    "auto_start": true,
+    "samples_per_point": 25,
+    "dwell_ms": 1500
+  },
+  "overlay": {
+    "enabled": true
+  },
+  "use_drift_correction": true
+}

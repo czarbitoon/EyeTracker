@@ -1,0 +1,7 @@
+# Core runtime dependencies
+opencv-python
+mediapipe
+PyQt6
+numpy
+scikit-learn
+pyautogui
