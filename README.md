@@ -2,6 +2,8 @@
 
 Windows desktop app that moves the mouse cursor using RIGHT-eye gaze. Tabs: Home, Calibration, Camera Settings, Fail-Safe. Uses OpenCV + MediaPipe Iris (FaceMesh refine) for monocular tracking, 9-point calibration, pyautogui cursor control, and a panic hotkey (Space/Esc) to instantly stop tracking.
 
+![CI](https://github.com/czarbitoon/EyeTracker/actions/workflows/windows-build.yml/badge.svg)
+
 ## Project Structure
 
 ```text
