@@ -26,5 +26,8 @@
   "overlay": {
     "enabled": true
   },
-  "use_drift_correction": true
+  "use_drift_correction": true,
+  "camera_profiles": {
+    "0": {}
+  }
 }

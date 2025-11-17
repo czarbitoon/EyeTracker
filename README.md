@@ -138,6 +138,22 @@ On startup, the app attempts to load a saved calibration from `MonocularTracker/
 - If PyQt6 or MediaPipe aren’t installed, imports may warn until you run `pip install -r requirements.txt`.
 - Some webcams ignore FPS/size hints; code falls back to actual camera-reported resolution.
 - pyautogui failsafe disabled in `app.py` to prevent corner stops.
+- Windows High-DPI warning: If you see `qt.qpa.window: SetProcessDpiAwarenessContext() failed: Access is denied.`, it's harmless. This app now defaults to a safer DPI mode on Windows to avoid it. You can force a specific DPI awareness by setting an environment variable before launch:
+  - `EYETRACKER_DPI_AWARENESS=1` for system-DPI aware
+  - `EYETRACKER_DPI_AWARENESS=2` for per-monitor (v1) [default]
+  - `EYETRACKER_DPI_AWARENESS=3` for per-monitor (v2)
+   
+   Example (PowerShell):
+   
+   ```powershell
+   $env:EYETRACKER_DPI_AWARENESS = "1"; python run.py
+   ```
+   
+   If you only want to silence the log, optionally set:
+   
+   ```powershell
+   $env:QT_LOGGING_RULES = "qt.qpa.window=false"; python run.py
+   ```
 
 ## License
 

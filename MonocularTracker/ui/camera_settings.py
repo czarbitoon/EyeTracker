@@ -313,16 +313,38 @@ class CameraSettingsWindow(QDialog):  # type: ignore[misc]
         except Exception:
             pass
         indices = []
+        seen = set()
+        backends = [
+            ("MSMF", getattr(cv2, "CAP_MSMF", None)),
+            ("DShow", getattr(cv2, "CAP_DSHOW", None)),
+            ("Any", getattr(cv2, "CAP_ANY", None)),
+        ]
+        backends = [(n, b) for (n, b) in backends if b is not None]
         for i in range(0, 11):
-            try:
-                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-                ok = bool(cap is not None and cap.isOpened())
-                if ok:
-                    indices.append(i)
-                if cap is not None:
-                    cap.release()
-            except Exception:
-                continue
+            for (be_name, be) in backends:
+                try:
+                    cap = cv2.VideoCapture(i, be)
+                    ok = bool(cap is not None and cap.isOpened())
+                    if ok and i not in seen:
+                        # Try to read some diagnostics
+                        try:
+                            aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            ah = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            fps = cap.get(cv2.CAP_PROP_FPS)
+                            fps_txt = f"{fps:.0f}" if isinstance(fps, (int, float)) and fps > 0 else "?"
+                            label = f"Camera {i} — {aw}x{ah} @ {fps_txt} [{be_name}]"
+                        except Exception:
+                            label = f"Camera {i} [{be_name}]"
+                        self.cmb_cameras.addItem(label, userData=i)
+                        indices.append(i)
+                        seen.add(i)
+                        break
+                finally:
+                    try:
+                        if cap is not None:
+                            cap.release()
+                    except Exception:
+                        pass
         try:
             if not indices:
                 self.cmb_cameras.addItem("No cameras found")

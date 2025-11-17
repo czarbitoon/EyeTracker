@@ -35,6 +35,8 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
     calibrate9Requested = pyqtSignal()
     settingsSaved = pyqtSignal()
     cameraSettingsRequested = pyqtSignal()
+    scanCamerasRequested = pyqtSignal()
+    useSelectedCameraRequested = pyqtSignal()
 
     def __init__(self):  # type: ignore[no-redef]
         super().__init__()
@@ -129,6 +131,24 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
     def _build_tab_camera_settings(self):
         w = QWidget()
         v = QVBoxLayout()
+        # Camera selection
+        v.addWidget(QLabel("Camera"))
+        row_cam = QHBoxLayout()
+        self.cmb_cameras = QComboBox()
+        self.btn_scan_cam = QPushButton("Scan")
+        self.btn_use_cam = QPushButton("Use")
+        try:
+            self.btn_use_cam.setEnabled(False)
+        except Exception:
+            pass
+        row_cam.addWidget(self.cmb_cameras, stretch=1)
+        row_cam.addWidget(self.btn_scan_cam)
+        row_cam.addWidget(self.btn_use_cam)
+        v.addLayout(row_cam)
+        # Wire camera selection actions (handled by AppCore)
+        self.btn_scan_cam.clicked.connect(self.scanCamerasRequested)  # type: ignore[attr-defined]
+        self.btn_use_cam.clicked.connect(self.useSelectedCameraRequested)  # type: ignore[attr-defined]
+
         # Minimal inline controls per spec
         self.cmb_res = QComboBox()
         self.cmb_res.addItems(["640x480", "1280x720", "1920x1080"])  # basic choices

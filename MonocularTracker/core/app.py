@@ -62,6 +62,12 @@ class AppCore:
         self.win.stopRequested.connect(self.stop_tracking)  # type: ignore[attr-defined]
         self.win.calibrate5Requested.connect(lambda: self.start_calibration(points=5))  # type: ignore[attr-defined]
         self.win.calibrate9Requested.connect(lambda: self.start_calibration(points=9))  # type: ignore[attr-defined]
+        # Camera selection from main UI
+        try:
+            self.win.scanCamerasRequested.connect(self._scan_cameras_main)  # type: ignore[attr-defined]
+            self.win.useSelectedCameraRequested.connect(self._use_selected_camera_main)  # type: ignore[attr-defined]
+        except Exception:
+            pass
         try:
             self.win.cameraSettingsRequested.connect(self.open_camera_settings)  # type: ignore[attr-defined]
         except Exception:
@@ -106,6 +112,7 @@ class AppCore:
             get_cap=lambda: getattr(self.pipeline.cam, "cap", None),
             restart_callback=self._restart_camera,
             settings=self.settings,
+            change_index_callback=self._on_camera_index_changed,
         )
 
         # Attempt to load an existing calibration model
@@ -178,8 +185,19 @@ class AppCore:
                 return
         except Exception:
             pass
+        # Try to start camera/pipeline
+        try:
+            self.pipeline.start()
+        except Exception as e:
+            # Show a helpful message and abort start
+            try:
+                QMessageBox.warning(self.win, "Camera", f"Failed to start camera.\n{e}")
+            except Exception:
+                print(f"Failed to start camera: {e}")
+            self.tracking = False
+            self.win.toggle_controls(tracking=False)
+            return
         self.tracking = True
-        self.pipeline.start()
         self.win.toggle_controls(tracking=True)
         # Show panic overlay
         try:
@@ -214,6 +232,110 @@ class AppCore:
             except Exception:
                 pass
 
+    def _on_camera_index_changed(self, idx: int) -> None:
+        # Update active camera index and restart to apply
+        try:
+            self.pipeline.cam.index = int(idx)
+        except Exception:
+            pass
+        # Persist is handled by SettingsManager via controller
+        self._restart_camera()
+
+    # Camera scanning support for main UI -----------------------------
+    def _scan_cameras_main(self) -> None:
+        try:
+            import cv2  # type: ignore
+        except Exception:
+            try:
+                QMessageBox.information(self.win, "Camera", "OpenCV is not available.")
+            except Exception:
+                pass
+            return
+        # Update UI state
+        try:
+            self.win.btn_scan_cam.setEnabled(False)
+            self.win.btn_use_cam.setEnabled(False)
+            self.win.cmb_cameras.clear()
+        except Exception:
+            pass
+        indices = []
+        seen = set()
+        backends = [
+            ("MSMF", getattr(cv2, "CAP_MSMF", None)),
+            ("DShow", getattr(cv2, "CAP_DSHOW", None)),
+            ("Any", getattr(cv2, "CAP_ANY", None)),
+        ]
+        backends = [(n, b) for (n, b) in backends if b is not None]
+        for i in range(0, 11):
+            for (be_name, be) in backends:
+                try:
+                    cap = cv2.VideoCapture(i, be)
+                    ok = bool(cap is not None and cap.isOpened())
+                    if ok and i not in seen:
+                        # Try to read some diagnostics
+                        try:
+                            aw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            ah = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            fps = cap.get(cv2.CAP_PROP_FPS)
+                            fps_txt = f"{fps:.0f}" if isinstance(fps, (int, float)) and fps > 0 else "?"
+                            label = f"Camera {i} — {aw}x{ah} @ {fps_txt} [{be_name}]"
+                        except Exception:
+                            label = f"Camera {i} [{be_name}]"
+                        self.win.cmb_cameras.addItem(label, userData=i)
+                        indices.append(i)
+                        seen.add(i)
+                        break
+                finally:
+                    try:
+                        if cap is not None:
+                            cap.release()
+                    except Exception:
+                        pass
+        # Populate combo
+        try:
+            if not indices:
+                self.win.cmb_cameras.addItem("No cameras found")
+                self.win.btn_use_cam.setEnabled(False)
+            else:
+                for i in indices:
+                    self.win.cmb_cameras.addItem(f"Camera {i}", userData=i)
+                cur = self.settings.camera_index()
+                idx = self.win.cmb_cameras.findData(cur)
+                if idx >= 0:
+                    self.win.cmb_cameras.setCurrentIndex(idx)
+                self.win.btn_use_cam.setEnabled(True)
+        finally:
+            try:
+                self.win.btn_scan_cam.setEnabled(True)
+            except Exception:
+                pass
+
+    def _use_selected_camera_main(self) -> None:
+        try:
+            data = self.win.cmb_cameras.currentData()
+        except Exception:
+            data = None
+        if data is None or isinstance(data, str):
+            try:
+                QMessageBox.information(self.win, "Camera", "Select a valid camera first.")
+            except Exception:
+                pass
+            return
+        new_idx = int(data)
+        try:
+            self._cam_controller.set_camera_index(new_idx)
+            # Persist and restart handled by callback + restart
+            try:
+                self.settings.set_camera_index(new_idx)
+                self.settings.save()
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                QMessageBox.warning(self.win, "Camera", f"Failed to switch camera.\n{e}")
+            except Exception:
+                pass
+
     def open_camera_settings(self) -> None:
         if CameraSettingsWindow is None:
             try:
@@ -236,9 +358,31 @@ class AppCore:
 
     # Calibration -------------------------------------------------------
     def start_calibration(self, points: int) -> None:
+        # Pause cursor movement during calibration but keep camera running
         if self.tracking:
-            # stop tracking while calibrating
-            self.stop_tracking()
+            self.tracking = False
+            try:
+                self.timer.stop()
+            except Exception:
+                pass
+            # Close panic overlay if visible
+            if self._panic_overlay is not None:
+                try:
+                    self._panic_overlay.close()
+                except Exception:
+                    pass
+                self._panic_overlay = None
+            # Keep pipeline running so we can capture frames for calibration
+        # Ensure camera/pipeline is running for calibration sampling
+        if not bool(self.pipeline.running):
+            try:
+                self.pipeline.start()
+            except Exception as e:
+                try:
+                    QMessageBox.warning(self.win, "Camera", f"Cannot start camera for calibration.\n{e}")
+                except Exception:
+                    print(f"Cannot start camera for calibration: {e}")
+                return
         self.pipeline.map.set_calibrating(True)
         self.pipeline.map.calib.reset()
         self._calibration_samples_true.clear()
