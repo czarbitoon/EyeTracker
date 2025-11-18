@@ -211,35 +211,62 @@ class AppCore:
         cal.finished.connect(self._calib_finish)
         self._calib_ui = cal
         self._calib_targets: list[tuple[int, int]] = []
+        # Flattened filtered features for training
         self._calib_feats: list[tuple[float, float]] = []
+        # Raw per-point samples (list per target)
+        self._calib_raw_samples: list[list[tuple[float, float]]] = []
+        self._calib_filtered_per_point: list[list[tuple[float, float]]] = []
+        self._calib_point_errors: list[float] = []
+        self._calib_point_conf: list[float] = []
         cal.show()
 
     def _calib_sample(self, target_xy):  # type: ignore[override]
-        # Collect 50–100 samples during dwell
+        # Collect raw samples (50–100 typical) during dwell for this point
         try:
             start = time.time()
-            feats = []
-            while (time.time() - start) < 2.2:  # ~2.2s within the 2.5s dwell
+            raw: list[tuple[float, float]] = []
+            while (time.time() - start) < 2.0:  # 2 seconds active sampling
                 frame = self.cam.read()
                 if frame is None:
                     continue
                 f = self.right.process(frame, mirror=self.settings.mirror())
                 if f is None:
                     continue
-                feats.append((f.nx, f.ny))
-            # Take median of samples to reduce noise, but also store raw
-            if not feats:
+                raw.append((f.nx, f.ny))
+            if not raw:
                 return
-            nx = float(np.median([p[0] for p in feats]))
-            ny = float(np.median([p[1] for p in feats]))
-            self._calib_feats.append((nx, ny))
+            # Outlier filtering (>2 std dev from mean center)
+            xs = np.array([p[0] for p in raw], dtype=np.float32)
+            ys = np.array([p[1] for p in raw], dtype=np.float32)
+            cx = float(xs.mean()); cy = float(ys.mean())
+            dx = xs - cx; dy = ys - cy
+            dist = np.sqrt(dx * dx + dy * dy)
+            sd = float(dist.std())
+            if sd <= 1e-6:
+                mask = np.ones_like(dist, dtype=bool)
+            else:
+                mask = dist <= (2.0 * sd)
+            filtered = [(float(xs[i]), float(ys[i])) for i in range(len(raw)) if bool(mask[i])]
+            if len(filtered) < 8:  # fallback if over-filtered
+                filtered = raw
+            self._calib_raw_samples.append(raw)
+            self._calib_filtered_per_point.append(filtered)
+            # For training later we just record target now
             self._calib_targets.append(tuple(target_xy))
         except Exception:
             pass
 
     def _calib_finish(self):  # type: ignore[override]
         self.calib.reset()
-        for f, t in zip(self._calib_feats, self._calib_targets):
+        # Flatten all filtered samples for training with replicated targets
+        flat_feats: list[tuple[float, float]] = []
+        flat_targets: list[tuple[int, int]] = []
+        for idx, filtered in enumerate(self._calib_filtered_per_point):
+            tgt = self._calib_targets[idx]
+            for (nx, ny) in filtered:
+                flat_feats.append((nx, ny))
+                flat_targets.append(tgt)
+        for (f, t) in zip(flat_feats, flat_targets):
             self.calib.add_sample(f[0], f[1], t)
         self.calib.train()
         # Save profile
@@ -247,11 +274,37 @@ class AppCore:
         os.makedirs(prof_dir, exist_ok=True)
         path = os.path.join(prof_dir, f"{self.settings.data.get('calibration',{}).get('profile','default')}.json")
         self.calib.save(path)
-        # Show basic scatter feedback
+        # Compute per-point confidence & errors
         try:
-            feats = self._calib_feats
-            preds = [self.calib.predict(f[0], f[1]) for f in feats]
-            show_calibration_plots(self._screen, self._calib_targets, preds)
+            self._calib_point_errors.clear(); self._calib_point_conf.clear()
+            diag = (self._screen[0] ** 2 + self._screen[1] ** 2) ** 0.5
+            threshold = 0.05 * diag  # 5% diagonal baseline
+            for idx, filtered in enumerate(self._calib_filtered_per_point):
+                tgt = self._calib_targets[idx]
+                errs = []
+                for (nx, ny) in filtered:
+                    px, py = self.calib.predict(nx, ny)
+                    err = ((px - tgt[0]) ** 2 + (py - tgt[1]) ** 2) ** 0.5
+                    errs.append(err)
+                mean_err = float(np.mean(errs)) if errs else float('inf')
+                self._calib_point_errors.append(mean_err)
+                conf = max(0.0, 1.0 - (mean_err / threshold))
+                self._calib_point_conf.append(conf)
+            overall = float(np.mean(self._calib_point_errors)) if self._calib_point_errors else float('inf')
+        except Exception:
+            overall = float('inf')
+        # Show scatter of filtered samples colored by point index
+        try:
+            from MonocularEyeAssist.ui.calibration_results import CalibrationResultsWindow
+            wnd = CalibrationResultsWindow(
+                screen=self._screen,
+                targets=self._calib_targets,
+                samples=self._calib_filtered_per_point,
+                point_errors=self._calib_point_errors,
+                point_conf=self._calib_point_conf,
+                overall_error=overall,
+            )
+            wnd.show()
         except Exception:
             pass
         QMessageBox.information(self.win, "Calibration", "Calibration complete.")

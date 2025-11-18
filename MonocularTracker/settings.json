@@ -29,5 +29,8 @@
   "use_drift_correction": true,
   "camera_profiles": {
     "0": {}
+  },
+  "eye": {
+    "mode": "right"
   }
 }
