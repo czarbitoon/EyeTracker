@@ -24,6 +24,12 @@ class SettingsManager:
             self.data = {
                 "camera_index": 0,
                 "smoothing": {"alpha": 0.25},
+                "eye": {"mode": "auto"},
+                "signal": {
+                    "window": 90,
+                    "ok": {"rx": 0.08, "ry": 0.05},
+                    "strong": {"rx": 0.15, "ry": 0.10},
+                },
                 "overlay": {"enabled": True},
                 "camera": {
                     "show_window": True,
@@ -71,6 +77,13 @@ class SettingsManager:
     def smoothing_alpha(self) -> float:
         return float(self.data.get("smoothing", {}).get("alpha", 0.25))
 
+    # Eye selection ---------------------------------------------------
+    def eye_mode(self) -> str:
+        return str(self.data.get("eye", {}).get("mode", "auto"))
+
+    def set_eye_mode(self, mode: str) -> None:
+        self.data.setdefault("eye", {})["mode"] = str(mode)
+
     def show_overlay(self) -> bool:
         return bool(self.data.get("overlay", {}).get("enabled", True))
 
@@ -82,6 +95,23 @@ class SettingsManager:
 
     def drift_learn_rate(self) -> float:
         return float(self.data.get("drift", {}).get("learn_rate", 0.01))
+
+    # Signal indicator settings --------------------------------------
+    def signal_window(self) -> int:
+        try:
+            return int(self.data.get("signal", {}).get("window", 90))
+        except Exception:
+            return 90
+
+    def signal_thresholds(self) -> tuple[float, float, float, float]:
+        s = self.data.get("signal", {})
+        ok = s.get("ok", {}) if isinstance(s, dict) else {}
+        strong = s.get("strong", {}) if isinstance(s, dict) else {}
+        x_ok = float(ok.get("rx", 0.08))
+        y_ok = float(ok.get("ry", 0.05))
+        x_strong = float(strong.get("rx", 0.15))
+        y_strong = float(strong.get("ry", 0.10))
+        return (x_ok, x_strong, y_ok, y_strong)
 
     # Camera settings ---------------------------------------------------
     def camera_resolution(self) -> tuple[int, int]:

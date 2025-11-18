@@ -23,9 +23,9 @@ class FrameResult:
 
 
 class Pipeline:
-    def __init__(self, camera_index: int, screen_size: Tuple[int, int], alpha: float, drift_enabled: bool, drift_lr: float) -> None:
+    def __init__(self, camera_index: int, screen_size: Tuple[int, int], alpha: float, drift_enabled: bool, drift_lr: float, eye_mode: str = "auto") -> None:
         self.cam = Camera(index=camera_index, width=1280, height=720, target_fps=30)
-        self.parser = GazeParser(right_eye_only=True)
+        self.parser = GazeParser(eye_mode=eye_mode)
         self.map = Mapping(alpha=alpha, drift_enabled=drift_enabled, drift_lr=drift_lr)
         self.screen_size = screen_size
         self.running = False

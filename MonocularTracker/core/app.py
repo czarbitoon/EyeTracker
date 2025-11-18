@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional, Tuple
+from collections import deque
 
 try:
     from PyQt6.QtCore import QTimer
@@ -56,6 +57,14 @@ class AppCore:
         self.timer.setInterval(33)
         self.timer.timeout.connect(self._on_tick)  # type: ignore[attr-defined]
         self.fps = FPSMonitor(window=60)
+        # Signal thresholds/window from settings
+        x_ok, x_strong, y_ok, y_strong = self.settings.signal_thresholds()
+        self._sig_thr_x_ok = float(x_ok)
+        self._sig_thr_x_strong = float(x_strong)
+        self._sig_thr_y_ok = float(y_ok)
+        self._sig_thr_y_strong = float(y_strong)
+        # Recent feature history for live signal indicator
+        self._sig_hist = deque(maxlen=max(30, int(self.settings.signal_window())))
 
         self.win = MainWindow()
         self.win.startRequested.connect(self.start_tracking)  # type: ignore[attr-defined]
@@ -88,6 +97,18 @@ class AppCore:
                 self.win.sld_contrast.valueChanged.connect(lambda _: self._cam_controller.set_contrast(float(self.win.sld_contrast.value())))  # type: ignore[attr-defined]
         except Exception:
             pass
+        # Eye mode change signal
+        try:
+            if hasattr(self.win, "eyeModeChanged"):
+                self.win.eyeModeChanged.connect(self._on_eye_mode_changed)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # Signal config live-tuning
+        try:
+            if hasattr(self.win, "signalConfigChanged"):
+                self.win.signalConfigChanged.connect(self._on_signal_config_changed)  # type: ignore[attr-defined]
+        except Exception:
+            pass
         self._panic_overlay: Optional[PanicOverlay] = None
         self._install_panic_shortcuts(self.win)
         self._win_ref = weakref.ref(self.win)
@@ -99,7 +120,8 @@ class AppCore:
             screen_size=(screen_w, screen_h),
             alpha=self.settings.smoothing_alpha(),
             drift_enabled=self.settings.drift_enabled(),
-            drift_lr=self.settings.drift_learn_rate(),
+              drift_lr=self.settings.drift_learn_rate(),
+              eye_mode=self.settings.eye_mode(),
         )
         self.tracking = False
         self._calibration_ui: Optional[CalibrationUI] = None
@@ -114,6 +136,31 @@ class AppCore:
             settings=self.settings,
             change_index_callback=self._on_camera_index_changed,
         )
+        # Apply thresholds to signal bars if present
+        try:
+            if getattr(self.win, "signal_bars", None) is not None:
+                self.win.signal_bars.set_thresholds(
+                    self._sig_thr_x_ok, self._sig_thr_x_strong, self._sig_thr_y_ok, self._sig_thr_y_strong
+                )
+            # Initialize UI spinboxes if present
+            if hasattr(self.win, "set_signal_config"):
+                self.win.set_signal_config(
+                    self._sig_thr_x_ok,
+                    self._sig_thr_x_strong,
+                    self._sig_thr_y_ok,
+                    self._sig_thr_y_strong,
+                    int(self._sig_hist.maxlen or 90),
+                )
+        except Exception:
+            pass
+            # Apply saved eye mode to UI if available
+            try:
+                mode = self.settings.eye_mode()
+                if hasattr(self.win, "cmb_eye"):
+                    idx_map = {"auto": 0, "right": 1, "left": 2}
+                    self.win.cmb_eye.setCurrentIndex(idx_map.get(mode, 0))  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
         # Attempt to load an existing calibration model
         try:
@@ -126,6 +173,16 @@ class AppCore:
         except Exception:
             pass
 
+        # Start a safe, cursor-disabled camera preview immediately
+        # so the left panel isn’t blank before tracking begins.
+        try:
+            self.pipeline.start()
+            self.timer.start()
+        except Exception:
+            # If preview cannot start (e.g., no camera), keep UI responsive.
+            # The user can still select a camera and retry later.
+            pass
+
     def _screen_size(self) -> Tuple[int, int]:
         try:
             if pyautogui:
@@ -134,6 +191,52 @@ class AppCore:
         except Exception:
             pass
         return (1920, 1080)
+
+    def _on_eye_mode_changed(self, mode: str) -> None:
+        # Persist selection and update live parser
+        try:
+            self.settings.set_eye_mode(mode)
+            self.settings.save()
+        except Exception:
+            pass
+        try:
+            if hasattr(self.pipeline, "parser") and self.pipeline.parser is not None:
+                self.pipeline.parser.set_mode(mode)
+        except Exception:
+            pass
+
+    def _on_signal_config_changed(self, x_ok: float, x_strong: float, y_ok: float, y_strong: float, window: int) -> None:
+        # Update in-memory thresholds
+        self._sig_thr_x_ok = float(x_ok)
+        self._sig_thr_x_strong = float(x_strong)
+        self._sig_thr_y_ok = float(y_ok)
+        self._sig_thr_y_strong = float(y_strong)
+        # Update deque window size (preserve recent values)
+        try:
+            win = max(30, int(window))
+            old = list(self._sig_hist)
+            self._sig_hist = deque(old[-win:], maxlen=win)
+        except Exception:
+            pass
+        # Persist to settings
+        try:
+            s = self.settings.data.setdefault("signal", {})
+            s.setdefault("ok", {})["rx"] = float(x_ok)
+            s.setdefault("ok", {})["ry"] = float(y_ok)
+            s.setdefault("strong", {})["rx"] = float(x_strong)
+            s.setdefault("strong", {})["ry"] = float(y_strong)
+            s["window"] = int(window)
+            self.settings.save()
+        except Exception:
+            pass
+        # Update bars
+        try:
+            if getattr(self.win, "signal_bars", None) is not None:
+                self.win.signal_bars.set_thresholds(
+                    self._sig_thr_x_ok, self._sig_thr_x_strong, self._sig_thr_y_ok, self._sig_thr_y_strong
+                )
+        except Exception:
+            pass
 
     # Panic -------------------------------------------------------------
     def _install_panic_shortcuts(self, host) -> None:
@@ -152,14 +255,17 @@ class AppCore:
             sc.activated.connect(self.trigger_panic)  # type: ignore[attr-defined]
 
     def trigger_panic(self) -> None:
-        # Stop movement immediately
+        # Stop movement immediately, but keep preview running.
         self.tracking = False
+        # Ensure preview remains active
         try:
-            self.timer.stop()
+            if not bool(self.pipeline.running):
+                self.pipeline.start()
         except Exception:
             pass
         try:
-            self.pipeline.stop()
+            if self.timer is not None and not bool(self.timer.isActive()):
+                self.timer.start()
         except Exception:
             pass
         if self._panic_overlay is not None:
@@ -187,7 +293,8 @@ class AppCore:
             pass
         # Try to start camera/pipeline
         try:
-            self.pipeline.start()
+            if not bool(self.pipeline.running):
+                self.pipeline.start()
         except Exception as e:
             # Show a helpful message and abort start
             try:
@@ -205,7 +312,18 @@ class AppCore:
             self._panic_overlay.show()
         except Exception:
             self._panic_overlay = None
-        self.timer.start()
+        # Ensure periodic processing is running
+        try:
+            if not bool(self.timer.isActive()):
+                self.timer.start()
+        except Exception:
+            pass
+            # Eye mode change
+            try:
+                if hasattr(self.win, "eyeModeChanged"):
+                    self.win.eyeModeChanged.connect(self._on_eye_mode_changed)  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
     def stop_tracking(self) -> None:
         self.trigger_panic()
@@ -384,6 +502,16 @@ class AppCore:
                     print(f"Cannot start camera for calibration: {e}")
                 return
         self.pipeline.map.set_calibrating(True)
+        # Apply robust settings from UI, if available
+        try:
+            robust_on = bool(getattr(self.win, "chk_robust").isChecked())
+            pct = float(getattr(self.win, "spn_outlier_pct").value()) if hasattr(self.win, "spn_outlier_pct") else 15.0
+            self.pipeline.map.calib.configure_robust(robust_on, drop_percent=pct)
+        except Exception:
+            try:
+                self.pipeline.map.calib.configure_robust(True, drop_percent=15.0)
+            except Exception:
+                pass
         self.pipeline.map.calib.reset()
         self._calibration_samples_true.clear()
         self._calibration_samples_pred.clear()
@@ -416,10 +544,34 @@ class AppCore:
         except Exception:
             pass
         # Replace predicted points with final model predictions for accuracy
-        final_preds: list[tuple[int, int]] = [self.pipeline.map.predict(f) for f in self._calibration_features]
-        # Show plots window
+        feats = self._calibration_features
+        trues = self._calibration_samples_true
+        # If calibrator performed outlier filtering, evaluate on inliers only
+        try:
+            mask = getattr(self.pipeline.map.calib, "last_inlier_mask", None)
+            if mask is not None and len(mask) == len(feats):
+                feats = [f for f, m in zip(feats, mask) if m]
+                trues = [t for t, m in zip(trues, mask) if m]
+        except Exception:
+            pass
+        final_preds: list[tuple[int, int]] = [self.pipeline.map.predict(f) for f in feats]
+        # Show plots window with adaptive threshold (~8% of diagonal)
         screen_w, screen_h = self._screen_size()
-        plots = CalibrationPlotsWindow((screen_w, screen_h), self._calibration_samples_true, final_preds, threshold_px=150.0)
+        try:
+            import math
+            diag = math.hypot(float(screen_w), float(screen_h))
+            thr = max(100.0, min(0.08 * diag, 260.0))
+        except Exception:
+            thr = 150.0
+        plots = CalibrationPlotsWindow((screen_w, screen_h), trues, final_preds, threshold_px=float(thr))
+        # If inlier filtering happened, hint it in the title
+        try:
+            total = len(self._calibration_features)
+            kept = len(feats)
+            if kept != total:
+                plots.setWindowTitle(f"Calibration Analysis — kept {kept}/{total} samples")
+        except Exception:
+            pass
         plots.accepted.connect(lambda: self._on_calib_accept(plots))  # type: ignore[attr-defined]
         plots.retry.connect(lambda: self._on_calib_retry(plots))  # type: ignore[attr-defined]
         plots.show()
@@ -473,6 +625,26 @@ class AppCore:
             self.win.update_video(frame=res.frame, landmarks=(res.features.landmarks if res.features else None), iris=(res.features.iris_center if res.features else None), box=(res.features.eyelid_box if res.features else None), predicted=res.predicted_xy)
         conf = 1.0 if (res.features is not None) else 0.0
         self.win.update_status(face_ok=res.face_ok, eye_ok=res.eye_ok, conf=conf, fps=self.fps.fps())
+
+        # Live signal indicator from recent (nx, ny)
+        try:
+            if res.features is not None:
+                self._sig_hist.append((float(res.features.nx), float(res.features.ny)))
+            if len(self._sig_hist) >= 30:
+                xs = [p[0] for p in self._sig_hist]
+                ys = [p[1] for p in self._sig_hist]
+                rx = max(xs) - min(xs)
+                ry = max(ys) - min(ys)
+                # Thresholds from settings (normalized units)
+                if rx >= self._sig_thr_x_strong and ry >= self._sig_thr_y_strong:
+                    q = "Strong"
+                elif rx >= self._sig_thr_x_ok and ry >= self._sig_thr_y_ok:
+                    q = "OK"
+                else:
+                    q = "Weak"
+                self.win.update_signal(rx=rx, ry=ry, quality=q)
+        except Exception:
+            pass
 
         # Move cursor if available and tracking
         if (not self._settings_dialog_open) and self.tracking and res.predicted_xy is not None:
