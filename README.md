@@ -33,8 +33,19 @@ pip install -r requirements.txt
 
 ## Run
 
+Preferred ways to launch the full UI:
+
 ```powershell
 python run.py
+# or
+python -m MonocularTracker.core.app
+```
+
+Legacy entrypoint compatibility:
+
+```powershell
+# Also works and now forwards to the core UI
+python -m MonocularTracker.app
 ```
 
 ## Calibration
@@ -57,11 +68,14 @@ Press Space or Esc (panic) to stop tracking immediately. Fail-Safe tab provides 
 
 Refine iris estimation and drift correction for production use. Webcams may ignore FPS/size hints.
 
+Consolidation note: The separate MonocularEyeAssist app has been removed. All features and improvements now live in MonocularTracker. Requirements were cleaned accordingly (PyQt6 only).
+
 ## Legacy README (Original MonocularTracker)
 
 A Python-based monocular eye-tracking input engine designed to integrate with OptiKey by emulating standard mouse input. Tracks the RIGHT eye using MediaPipe FaceMesh/Iris, maps features to screen coordinates with learnable regressors, and provides smoothing and dwell-click.
 
-## Features
+### Legacy Features
+
 - Right-eye iris center + eyelid bounding box extraction (MediaPipe FaceMesh with iris refinement)
 - Normalized eye features to (nx, ny) in [0,1]
 - Calibration module to collect feature → screen samples
@@ -70,8 +84,9 @@ A Python-based monocular eye-tracking input engine designed to integrate with Op
 - Cursor control via pyautogui (works with OptiKey as a normal mouse)
 - Minimal PyQt6 overlays and calibration UI
 
-## Project structure
-```
+### Legacy Project structure
+
+```text
 MonocularTracker/
   app.py
   camera.py
@@ -96,24 +111,29 @@ MonocularTracker/
     blink.py
 ```
 
-## Requirements
+### Legacy Requirements
+
 - Python 3.10–3.11 recommended on Windows
 - See `requirements.txt` for Python dependencies
 
 Install (PowerShell):
+
 ```powershell
 python -m venv .venv
 . .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-## Run
+### Legacy Run
+
 Use module form to ensure package imports:
+
 ```powershell
 python -m MonocularTracker.app
 ```
 
 Or use helper script:
+
 ```powershell
 python run.py
 ```
@@ -127,7 +147,7 @@ On startup, the app attempts to load a saved calibration from `MonocularTracker/
 3. When finished, the chosen regressor trains; cursor then tracks gaze.
 4. Dwell over UI elements to trigger left-clicks (if enabled).
 
-## Notes
+### Legacy Notes
 
 - Scaffold implementation: refine iris center estimation, EAR for blink, and drift correction for production use.
 - If camera FPS is unstable, software pacing in `camera.py` maintains consistent processing intervals.

@@ -58,6 +58,29 @@ from MonocularTracker.ai.drift_corrector import DriftCorrector
 from MonocularTracker.ui.calibration_ui import CalibrationUI
 from MonocularTracker.ui.overlay import Overlay
 
+# --- Compatibility shim -------------------------------------------------------
+# Many users launch via `python -m MonocularTracker.app`. This legacy module did
+# not show the full main window. To avoid confusion, provide a thin wrapper that
+# forwards to the modern PyQt6 UI in MonocularTracker.core.app.
+
+def main() -> int:  # pragma: no cover - runtime entry convenience
+    try:
+        from MonocularTracker.core.app import main as core_main
+        return core_main()
+    except Exception as e:
+        # If core UI is unavailable for some reason, fall back to legacy path
+        try:
+            print("Falling back to legacy MonocularTracker.app due to:", e)
+        except Exception:
+            pass
+        # Legacy path would require wiring up a minimal loop; however to keep
+        # behavior consistent, simply indicate failure so users can install deps.
+        return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
+
 
 def load_settings(settings_path: str) -> dict:
     if not os.path.exists(settings_path):

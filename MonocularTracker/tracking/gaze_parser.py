@@ -44,6 +44,9 @@ class GazeParser:
         # Median smoothing for iris centers
         self._iris_hist_right = deque(maxlen=5)
         self._iris_hist_left = deque(maxlen=5)
+        # Last normalized coords for soft delta-clamp per eye
+        self._last_norm_right: Optional[Tuple[float, float]] = None
+        self._last_norm_left: Optional[Tuple[float, float]] = None
 
     def set_mode(self, mode: str) -> None:
         self.eye_mode = mode if mode in ("auto", "right", "left") else "auto"
@@ -99,6 +102,22 @@ class GazeParser:
         ny = (cy_s - y_up) / eye_h
         nx = float(max(0.0, min(1.0, nx)))
         ny = float(max(0.0, min(1.0, ny)))
+        # Soft clamp per-frame delta to suppress spikes
+        try:
+            last = self._last_norm_right if tag == "right" else self._last_norm_left
+            if last is not None:
+                max_d = 0.12  # max change per frame in normalized units
+                dx = max(-max_d, min(max_d, nx - last[0]))
+                dy = max(-max_d, min(max_d, ny - last[1]))
+                nx = float(last[0] + dx)
+                ny = float(last[1] + dy)
+        except Exception:
+            pass
+        # update last
+        if tag == "right":
+            self._last_norm_right = (nx, ny)
+        else:
+            self._last_norm_left = (nx, ny)
 
         # Eyelid box for overlay (slightly expanded)
         m = 2

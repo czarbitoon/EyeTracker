@@ -678,3 +678,6 @@ def main() -> int:
     except Exception:
         pass
     return int(code)
+
+if __name__ == "__main__":  # pragma: no cover - module entrypoint for `-m`
+    raise SystemExit(main())

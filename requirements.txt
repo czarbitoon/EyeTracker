@@ -2,9 +2,8 @@
 opencv-python
 mediapipe
 PyQt6
-PyQt5
 numpy
 scikit-learn
 pyautogui
 matplotlib
-keyboard
+ 
