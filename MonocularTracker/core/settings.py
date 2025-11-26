@@ -25,6 +25,11 @@ class SettingsManager:
                 "camera_index": 0,
                 "smoothing": {"alpha": 0.25},
                 "eye": {"mode": "auto"},
+                "calibration": {
+                    "threshold_px": 150.0,
+                    "robust_drop_percent": 25.0,
+                    "robust_enabled": True,
+                },
                 "signal": {
                     "window": 90,
                     "ok": {"rx": 0.08, "ry": 0.05},
@@ -76,6 +81,25 @@ class SettingsManager:
 
     def smoothing_alpha(self) -> float:
         return float(self.data.get("smoothing", {}).get("alpha", 0.25))
+
+    # Calibration settings --------------------------------------------
+    def calib_threshold_px(self) -> float:
+        return float(self.data.get("calibration", {}).get("threshold_px", 150.0))
+
+    def set_calib_threshold_px(self, v: float) -> None:
+        self.data.setdefault("calibration", {})["threshold_px"] = float(v)
+
+    def calib_robust_drop_percent(self) -> float:
+        return float(self.data.get("calibration", {}).get("robust_drop_percent", 25.0))
+
+    def set_calib_robust_drop_percent(self, v: float) -> None:
+        self.data.setdefault("calibration", {})["robust_drop_percent"] = float(v)
+
+    def calib_robust_enabled(self) -> bool:
+        return bool(self.data.get("calibration", {}).get("robust_enabled", True))
+
+    def set_calib_robust_enabled(self, on: bool) -> None:
+        self.data.setdefault("calibration", {})["robust_enabled"] = bool(on)
 
     # Eye selection ---------------------------------------------------
     def eye_mode(self) -> str:

@@ -14,15 +14,43 @@ import os
 import sys
 import weakref
 
+# Reduce noisy logs from TF/MediaPipe/OpenCV before heavy imports initialize logging
+try:
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")       # INFO(0)/WARNING(1)/ERROR(2)/FATAL(3)
+    os.environ.setdefault("GLOG_minloglevel", "2")          # glog/absl: 0=INFO,1=WARNING,2=ERROR
+    os.environ.setdefault("GLOG_logtostderr", "1")          # send glog to stderr
+    os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")      # OpenCV C++ logs
+except Exception:
+    pass
+
 try:
     import pyautogui  # type: ignore
 except Exception:  # pragma: no cover
     pyautogui = None
 
+# Suppress noisy protobuf deprecation warning from mediapipe dependencies
+try:
+    import warnings
+    warnings.filterwarnings(
+        "ignore",
+        message=".*SymbolDatabase.GetPrototype\(\) is deprecated.*",
+        category=UserWarning,
+        module=r"google\.protobuf\.symbol_database"
+    )
+except Exception:
+    pass
+
 try:
     import cv2  # type: ignore
 except Exception:
     cv2 = None
+
+# Further reduce absl logs from Python side (after imports initialize handlers)
+try:
+    import absl.logging as absl_logging  # type: ignore
+    absl_logging.set_verbosity(absl_logging.ERROR)
+except Exception:
+    pass
 
 from MonocularTracker.core.settings import SettingsManager
 from MonocularTracker.ui.main_window import MainWindow
@@ -505,13 +533,23 @@ class AppCore:
         # Apply robust settings from UI, if available
         try:
             robust_on = bool(getattr(self.win, "chk_robust").isChecked())
-            pct = float(getattr(self.win, "spn_outlier_pct").value()) if hasattr(self.win, "spn_outlier_pct") else 15.0
-            self.pipeline.map.calib.configure_robust(robust_on, drop_percent=pct)
-        except Exception:
+            pct = float(getattr(self.win, "spn_outlier_pct").value()) if hasattr(self.win, "spn_outlier_pct") else self.settings.calib_robust_drop_percent()
+            thr = float(getattr(self.win, "spn_calib_thr").value()) if hasattr(self.win, "spn_calib_thr") else self.settings.calib_threshold_px()
+            # Persist any changes made via UI controls
             try:
-                self.pipeline.map.calib.configure_robust(True, drop_percent=15.0)
+                self.settings.set_calib_robust_enabled(robust_on)
+                self.settings.set_calib_robust_drop_percent(pct)
+                self.settings.set_calib_threshold_px(thr)
+                self.settings.save()
             except Exception:
                 pass
+        except Exception:
+            robust_on = self.settings.calib_robust_enabled()
+            pct = self.settings.calib_robust_drop_percent()
+        try:
+            self.pipeline.map.calib.configure_robust(robust_on, drop_percent=pct)
+        except Exception:
+            pass
         self.pipeline.map.calib.reset()
         self._calibration_samples_true.clear()
         self._calibration_samples_pred.clear()
@@ -555,15 +593,10 @@ class AppCore:
         except Exception:
             pass
         final_preds: list[tuple[int, int]] = [self.pipeline.map.predict(f) for f in feats]
-        # Show plots window with adaptive threshold (~8% of diagonal)
+        # Show plots window using threshold from settings
         screen_w, screen_h = self._screen_size()
-        try:
-            import math
-            diag = math.hypot(float(screen_w), float(screen_h))
-            thr = max(100.0, min(0.08 * diag, 260.0))
-        except Exception:
-            thr = 150.0
-        plots = CalibrationPlotsWindow((screen_w, screen_h), trues, final_preds, threshold_px=float(thr))
+        thr = float(self.settings.calib_threshold_px())
+        plots = CalibrationPlotsWindow((screen_w, screen_h), trues, final_preds, threshold_px=thr)
         # If inlier filtering happened, hint it in the title
         try:
             total = len(self._calibration_features)

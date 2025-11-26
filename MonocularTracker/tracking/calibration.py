@@ -40,9 +40,9 @@ class Calibrator:
         self.last_inlier_mask: Optional[list[bool]] = None
         # Robust config
         self.robust_enabled: bool = True
-        self.robust_drop_percent: float = 15.0  # drop worst N percent
-        self.min_keep_frac: float = 0.7
-        self.min_keep_count: int = 30
+        self.robust_drop_percent: float = 25.0  # drop worst N percent (more aggressive)
+        self.min_keep_frac: float = 0.65
+        self.min_keep_count: int = 20
 
     def reset(self) -> None:
         self.samples.clear()
@@ -174,6 +174,36 @@ class Calibrator:
                 else:
                     self.mx, self.my, self.scaler, self.method = mx_a, my_a, sc_a, "mlp"
         self.is_trained = True
+        # Log training summary for diagnostics (console + file)
+        try:
+            errs = self._compute_errors(X, yx, yy, self.mx, self.my, self.scaler)  # type: ignore[arg-type]
+            mean_err = float(np.mean(errs))
+            max_err = float(np.max(errs))
+            msg = f"Calibration: samples={len(X)} method={self.method} mean={mean_err:.2f}px max={max_err:.2f}px"
+            print(msg)
+            # File logging
+            try:
+                root = os.path.dirname(os.path.dirname(__file__))  # MonocularTracker/
+                log_dir = os.path.join(root, "logs")
+                os.makedirs(log_dir, exist_ok=True)
+                with open(os.path.join(log_dir, "calibration.log"), "a", encoding="utf-8") as f:
+                    f.write(msg + "\n")
+            except Exception:
+                pass
+            threshold = 150.0
+            if mean_err > threshold:
+                warn = "Calibration warning: calibration unstable — consider recalibrating."
+                print(warn)
+                try:
+                    root = os.path.dirname(os.path.dirname(__file__))
+                    log_dir = os.path.join(root, "logs")
+                    os.makedirs(log_dir, exist_ok=True)
+                    with open(os.path.join(log_dir, "calibration.log"), "a", encoding="utf-8") as f:
+                        f.write(warn + "\n")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def predict(self, f: Tuple[float, float]) -> Tuple[int, int]:
         if not self.is_trained or self.mx is None or self.my is None:

@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         self.chk_enable_drift = QCheckBox("Enable drift correction")
         # Robust calibration options
         try:
-            from PyQt6.QtWidgets import QHBoxLayout, QSpinBox, QLabel
+            from PyQt6.QtWidgets import QHBoxLayout, QSpinBox, QLabel, QDoubleSpinBox
             row = QHBoxLayout()
             self.chk_robust = QCheckBox("Robust mode: drop outliers")
             self.chk_robust.setChecked(True)
@@ -186,6 +186,9 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             row.addWidget(self.chk_robust)
             row.addWidget(QLabel("Drop %:"))
             row.addWidget(self.spn_outlier_pct)
+            row.addWidget(QLabel("Warn threshold (px):"))
+            self.spn_calib_thr = QDoubleSpinBox(); self.spn_calib_thr.setRange(50.0, 400.0); self.spn_calib_thr.setSingleStep(10.0); self.spn_calib_thr.setValue(150.0)
+            row.addWidget(self.spn_calib_thr)
             row.addStretch(1)
             v.addLayout(row)
         except Exception:
