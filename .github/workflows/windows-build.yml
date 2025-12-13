@@ -27,6 +27,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Run tests
+        run: |
+          pip install pytest
+          pytest -q
+
       - name: Build executable
         run: |
           pyinstaller -y MonocularEyeTracker.spec

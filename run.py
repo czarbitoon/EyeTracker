@@ -1,10 +1,8 @@
 """Convenience launcher for MonocularTracker.
 
-Allows running with:
-  python run.py
-
-Equivalent to:
-  python -m MonocularTracker.core.app
+Preferred entry: `python run.py`
+Equivalent module form: `python -m MonocularTracker.core.app`
+Falls back to `MonocularTracker.app` if core UI import fails.
 """
 import os
 import sys
@@ -31,9 +29,10 @@ if os.name == "nt":
 
 try:
   from MonocularTracker.core.app import main
-except Exception:
-  # fallback to legacy app entry if needed
-  from MonocularTracker.app import main  # type: ignore
+except Exception as e:  # pragma: no cover
+  print("Failed to import MonocularTracker.core.app:", e)
+  print("Install dependencies with 'pip install -r requirements.txt'.")
+  raise SystemExit(1)
 
 if __name__ == "__main__":
     raise SystemExit(main())

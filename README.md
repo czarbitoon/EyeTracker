@@ -31,21 +31,31 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+## File Map (quick guide)
+
+- `run.py`: Preferred launcher; starts the modern UI in `MonocularTracker/core/app.py`.
+- `app.py` (repo root): Thin launcher that forwards to the modern UI.
+- `MonocularTracker/core/app.py`: Main application setup, logging suppression, UI wiring.
+- `MonocularTracker/tracking/pipeline.py`: Frame processing pipeline and gaze mapping.
+- `MonocularTracker/tracking/calibration.py`: Calibration training and error reporting.
+- `MonocularTracker/ui/main_window.py`: Primary window; start/stop, calibration controls.
+- `MonocularTracker/ui/calibration_ui.py`: Fullscreen calibration overlay with targets and crosshair.
+- `MonocularTracker/ui/calibration_plots.py`: Calibration quality plots.
+- `MonocularTracker/ai/openvino_gaze.py`: Optional CPU-friendly gaze adapter.
+- `MonocularTracker/calibration_state.json`: Saved calibration model (auto-loaded).
+
 ## Run
 
-Preferred ways to launch the full UI:
+Preferred entry point is the top-level `run.py` in the project root:
 
 ```powershell
 python run.py
-# or
-python -m MonocularTracker.core.app
 ```
 
-Legacy entrypoint compatibility:
+Alternative module form:
 
 ```powershell
-# Also works and now forwards to the core UI
-python -m MonocularTracker.app
+python -m MonocularTracker.core.app
 ```
 
 ## Calibration
@@ -70,88 +80,12 @@ Refine iris estimation and drift correction for production use. Webcams may igno
 
 Consolidation note: The separate MonocularEyeAssist app has been removed. All features and improvements now live in MonocularTracker. Requirements were cleaned accordingly (PyQt6 only).
 
-## Legacy README (Original MonocularTracker)
+## Calibration Workflow
 
-A Python-based monocular eye-tracking input engine designed to integrate with OptiKey by emulating standard mouse input. Tracks the RIGHT eye using MediaPipe FaceMesh/Iris, maps features to screen coordinates with learnable regressors, and provides smoothing and dwell-click.
-
-### Legacy Features
-
-- Right-eye iris center + eyelid bounding box extraction (MediaPipe FaceMesh with iris refinement)
-- Normalized eye features to (nx, ny) in [0,1]
-- Calibration module to collect feature → screen samples
-- ML mapping: Polynomial regression or MLPRegressor
-- Smoothing (EMA), dwell-click, optional blink detection
-- Cursor control via pyautogui (works with OptiKey as a normal mouse)
-- Minimal PyQt6 overlays and calibration UI
-
-### Legacy Project structure
-
-```text
-MonocularTracker/
-  app.py
-  camera.py
-  gaze_parser.py
-  settings.json
-  ai/
-    regressors.py
-    drift_corrector.py
-  calibration/
-    calibrator.py
-    models.py
-    samples/
-  control/
-    cursor.py
-    events.py
-  ui/
-    calibration_ui.py
-    overlay.py
-  utils/
-    smoothing.py
-    dwell.py
-    blink.py
-```
-
-### Legacy Requirements
-
-- Python 3.10–3.11 recommended on Windows
-- See `requirements.txt` for Python dependencies
-
-Install (PowerShell):
-
-```powershell
-python -m venv .venv
-. .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### Legacy Run
-
-Use module form to ensure package imports:
-
-```powershell
-python -m MonocularTracker.app
-```
-
-Or use helper script:
-
-```powershell
-python run.py
-```
-
-On startup, the app attempts to load a saved calibration from `MonocularTracker/calibration_state.json`. After you complete a calibration run, the trained model is saved back to that file automatically.
-
-## Calibration workflow
-
-1. Launch the app; open the calibration UI (or call `CalibrationUI.start()` if disabled).
-2. Follow the moving dots. The app collects (nx, ny) → (x, y) samples for each target point.
-3. When finished, the chosen regressor trains; cursor then tracks gaze.
-4. Dwell over UI elements to trigger left-clicks (if enabled).
-
-### Legacy Notes
-
-- Scaffold implementation: refine iris center estimation, EAR for blink, and drift correction for production use.
-- If camera FPS is unstable, software pacing in `camera.py` maintains consistent processing intervals.
-- OptiKey integration: pyautogui moves the OS cursor and clicks, so OptiKey recognizes input as a standard mouse.
+1. Launch the app; open the Calibration tab.
+2. Follow the moving dots; samples are collected per target.
+3. Model trains automatically; results are saved to `calibration_state.json`.
+4. Start tracking; use dwell-click and settings to tune behavior.
 
 ## Troubleshooting
 

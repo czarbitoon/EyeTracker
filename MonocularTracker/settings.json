@@ -4,9 +4,7 @@
     "type": "poly",
     "degree": 3
   },
-  "smoothing": {
-    "alpha": 0.25
-  },
+  
   "dwell": {
     "enabled": true,
     "time_ms": 700,
@@ -21,7 +19,10 @@
     "points": 9,
     "auto_start": true,
     "samples_per_point": 25,
-    "dwell_ms": 1500
+    "dwell_ms": 1500,
+    "robust_enabled": true,
+    "robust_drop_percent": 15.0,
+    "threshold_px": 150.0
   },
   "overlay": {
     "enabled": true

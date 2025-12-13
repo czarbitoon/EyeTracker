@@ -3,7 +3,6 @@ Settings dialog for Monocular Eye Tracker
 
 Allows editing a small subset of settings in settings.json:
 - dwell.time_ms
-- smoothing.alpha
 - blink.enabled
 """
 from __future__ import annotations
@@ -65,15 +64,7 @@ class SettingsDialog(QDialog):  # type: ignore[misc]
         row1.addWidget(self.spn_dwell)
         v.addLayout(row1)
 
-        # Smoothing alpha
-        row2 = QHBoxLayout()
-        row2.addWidget(QLabel("Smoothing alpha (0-1):"))
-        self.spn_alpha = QDoubleSpinBox()
-        self.spn_alpha.setDecimals(2)
-        self.spn_alpha.setRange(0.0, 1.0)
-        self.spn_alpha.setSingleStep(0.05)
-        row2.addWidget(self.spn_alpha)
-        v.addLayout(row2)
+        # Smoothing fixed to Butterworth; no UI control
 
         # Blink enable
         row3 = QHBoxLayout()
@@ -102,11 +93,9 @@ class SettingsDialog(QDialog):  # type: ignore[misc]
             cfg = {}
 
         dwell_ms = int(cfg.get("dwell", {}).get("time_ms", 700))
-        alpha = float(cfg.get("smoothing", {}).get("alpha", 0.25))
         blink_enabled = bool(cfg.get("blink", {}).get("enabled", False))
 
         self.spn_dwell.setValue(dwell_ms)
-        self.spn_alpha.setValue(alpha)
         self.chk_blink.setChecked(blink_enabled)
 
     def _on_save(self) -> None:
@@ -120,8 +109,7 @@ class SettingsDialog(QDialog):  # type: ignore[misc]
         cfg.setdefault("dwell", {})
         cfg["dwell"]["time_ms"] = int(self.spn_dwell.value())
 
-        cfg.setdefault("smoothing", {})
-        cfg["smoothing"]["alpha"] = float(self.spn_alpha.value())
+        # No smoothing alpha; Butterworth is fixed in code
 
         cfg.setdefault("blink", {})
         cfg["blink"]["enabled"] = bool(self.chk_blink.isChecked())

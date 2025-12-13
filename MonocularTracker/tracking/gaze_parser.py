@@ -41,9 +41,9 @@ class GazeParser:
         # For auto mode, track recent movement per eye to pick the stronger signal
         self._hist_right = deque(maxlen=30)
         self._hist_left = deque(maxlen=30)
-        # Median smoothing for iris centers
-        self._iris_hist_right = deque(maxlen=5)
-        self._iris_hist_left = deque(maxlen=5)
+        # Disable median smoothing of iris centers
+        self._iris_hist_right = deque(maxlen=1)
+        self._iris_hist_left = deque(maxlen=1)
         # Last normalized coords for soft delta-clamp per eye
         self._last_norm_right: Optional[Tuple[float, float]] = None
         self._last_norm_left: Optional[Tuple[float, float]] = None
@@ -88,15 +88,8 @@ class GazeParser:
         # Blink/closed-eye rejection
         if (eye_h / eye_w) < 0.15:
             return None
-        # Median smoothing for iris center
-        try:
-            iris_hist.append((cx, cy))
-            xs = [p[0] for p in iris_hist]
-            ys = [p[1] for p in iris_hist]
-            cx_s = float(np.median(xs)) if np is not None else float(sum(xs) / len(xs))
-            cy_s = float(np.median(ys)) if np is not None else float(sum(ys) / len(ys))
-        except Exception:
-            cx_s, cy_s = float(cx), float(cy)
+        # No median smoothing; use raw iris center
+        cx_s, cy_s = float(cx), float(cy)
         # Normalize using corner/eyelid pair distances (more stable than loose bbox)
         nx = (cx_s - x_outer) / eye_w
         ny = (cy_s - y_up) / eye_h

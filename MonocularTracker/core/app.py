@@ -16,10 +16,13 @@ import weakref
 
 # Reduce noisy logs from TF/MediaPipe/OpenCV before heavy imports initialize logging
 try:
-    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")       # INFO(0)/WARNING(1)/ERROR(2)/FATAL(3)
-    os.environ.setdefault("GLOG_minloglevel", "2")          # glog/absl: 0=INFO,1=WARNING,2=ERROR
-    os.environ.setdefault("GLOG_logtostderr", "1")          # send glog to stderr
-    os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")      # OpenCV C++ logs
+    # Force min log level to suppress native C++ warnings (e.g., feedback manager)
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"        # 3 = FATAL (hides ERROR/WARNING/INFO)
+    os.environ["GLOG_minloglevel"] = "2"           # 2 = ERROR (hides WARNING/INFO)
+    os.environ["GLOG_logtostderr"] = "1"           # send glog to stderr
+    os.environ["OPENCV_LOG_LEVEL"] = "SILENT"      # OpenCV C++ logs
+    # OpenVINO runtime logs
+    os.environ["OV_LOG_LEVEL"] = "ERROR"
 except Exception:
     pass
 
@@ -143,19 +146,22 @@ class AppCore:
 
         # Setup pipeline
         screen_w, screen_h = self._screen_size()
-        self.pipeline = Pipeline(
+          self.pipeline = Pipeline(
             camera_index=self.settings.camera_index(),
             screen_size=(screen_w, screen_h),
             alpha=self.settings.smoothing_alpha(),
             drift_enabled=self.settings.drift_enabled(),
               drift_lr=self.settings.drift_learn_rate(),
               eye_mode=self.settings.eye_mode(),
+              gaze_engine=self.settings.gaze_engine(),
+              model_dir=os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
         )
         self.tracking = False
         self._calibration_ui: Optional[CalibrationUI] = None
         self._calibration_samples_true: list[tuple[int, int]] = []
         self._calibration_samples_pred: list[tuple[int, int]] = []
         self._calibration_features: list[tuple[float, float]] = []
+        self._calib_recent_feats = deque(maxlen=12)
         self._settings_dialog_open = False
         self._cam_settings_wnd = None
         self._cam_controller = CameraController(
@@ -181,14 +187,22 @@ class AppCore:
                 )
         except Exception:
             pass
-            # Apply saved eye mode to UI if available
-            try:
-                mode = self.settings.eye_mode()
-                if hasattr(self.win, "cmb_eye"):
-                    idx_map = {"auto": 0, "right": 1, "left": 2}
-                    self.win.cmb_eye.setCurrentIndex(idx_map.get(mode, 0))  # type: ignore[attr-defined]
-            except Exception:
-                pass
+        # Apply saved eye mode to UI if available
+        try:
+            mode = self.settings.eye_mode()
+            if hasattr(self.win, "cmb_eye"):
+                idx_map = {"auto": 0, "right": 1, "left": 2}
+                self.win.cmb_eye.setCurrentIndex(idx_map.get(mode, 0))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        # Apply saved gaze engine to UI if available
+        try:
+            eng = self.settings.gaze_engine()
+            if hasattr(self.win, "cmb_gaze_engine"):
+                idx_map = {"landmark": 0, "openvino": 1, "hybrid": 2}
+                self.win.cmb_gaze_engine.setCurrentIndex(idx_map.get(eng, 0))  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
         # Attempt to load an existing calibration model
         try:
@@ -336,7 +350,7 @@ class AppCore:
         self.win.toggle_controls(tracking=True)
         # Show panic overlay
         try:
-            self._panic_overlay = PanicOverlay()
+            self._panic_overlay = PanicOverlay(panic_callback=self.trigger_panic)
             self._panic_overlay.show()
         except Exception:
             self._panic_overlay = None
@@ -554,6 +568,7 @@ class AppCore:
         self._calibration_samples_true.clear()
         self._calibration_samples_pred.clear()
         self._calibration_features.clear()
+        self._calib_recent_feats.clear()
         self._calibration_ui = CalibrationUI(points_count=points, samples_per_point=25, dwell_ms=1500)
         self._calibration_ui.sampleRequested.connect(self._on_calib_sample)  # type: ignore[attr-defined]
         self._calibration_ui.calibrationFinished.connect(self._on_calib_finished)  # type: ignore[attr-defined]
@@ -564,12 +579,30 @@ class AppCore:
         res = self.pipeline.process()
         if res.features is None:
             return
-        f = (res.features.nx, res.features.ny)
-        self.pipeline.map.add_calibration_sample(f, target_xy)
-        self._calibration_samples_true.append(target_xy)
-        self._calibration_features.append(f)
+        f = (float(res.features.nx), float(res.features.ny))
+        # Temporal averaging with stability gating
+        try:
+            self._calib_recent_feats.append(f)
+            xs = [p[0] for p in self._calib_recent_feats]
+            ys = [p[1] for p in self._calib_recent_feats]
+            rx = (max(xs) - min(xs)) if xs else 0.0
+            ry = (max(ys) - min(ys)) if ys else 0.0
+            # Only accept sample if short-term motion is small (reduces noise/jitter)
+            if rx <= 0.02 and ry <= 0.02 and len(self._calib_recent_feats) >= 5:
+                avg = (sum(xs) / len(xs), sum(ys) / len(ys))
+                self.pipeline.map.add_calibration_sample(avg, target_xy)
+                self._calibration_samples_true.append(target_xy)
+                self._calibration_features.append(avg)
+            else:
+                # Skip unstable frame; let timer collect more until stable
+                return
+        except Exception:
+            # Fallback: add raw feature
+            self.pipeline.map.add_calibration_sample(f, target_xy)
+            self._calibration_samples_true.append(target_xy)
+            self._calibration_features.append(f)
         # Predict immediately (before training) for plot reference; will be refined after training
-        pred = self.pipeline.map.predict(f)
+        pred = self.pipeline.map.predict(self._calibration_features[-1])
         self._calibration_samples_pred.append(pred)
 
     def _on_calib_finished(self):  # type: ignore[override]
@@ -686,6 +719,13 @@ class AppCore:
                 self.cursor.move_cursor(x, y)
             except Exception:
                 pass
+
+        # During calibration, update the fullscreen UI with a live crosshair
+        try:
+            if self._calibration_ui is not None:
+                self._calibration_ui.set_live_gaze(res.predicted_xy)
+        except Exception:
+            pass
 
         # Update camera settings diagnostics FPS label if window open
         try:

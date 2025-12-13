@@ -25,7 +25,7 @@ class DwellClickDetector:
     def update(self, xy: Tuple[int, int]) -> bool:
         if not self.enabled:
             return False
-        now = time.time() * 1000.0
+        now = time.perf_counter() * 1000.0
         if self._anchor is None:
             self._anchor = xy
             self._anchor_time = now
@@ -70,7 +70,7 @@ class DwellClicker:
         self._anchor_time = 0.0
 
     def check(self, pos: Tuple[int, int]) -> bool:
-        now = time.time() * 1000.0
+        now = time.perf_counter() * 1000.0
         if self._anchor is None:
             self._anchor = pos
             self._anchor_time = now

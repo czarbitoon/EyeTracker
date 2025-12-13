@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import List, Tuple
 
 try:
-    from PyQt6.QtCore import pyqtSignal, QTimer, Qt, QRect
+    from PyQt6.QtCore import pyqtSignal, QTimer, Qt, QRect, QPoint
     from PyQt6.QtGui import QPainter, QColor, QGuiApplication
     from PyQt6.QtWidgets import QWidget
 except Exception:  # pragma: no cover
@@ -49,6 +49,7 @@ class CalibrationUI(QWidget):  # type: ignore[misc]
         self._samples_emitted = 0
         self._point_timer = None  # type: ignore[assignment]
         self._sample_timer = None  # type: ignore[assignment]
+        self._live_xy: Tuple[int, int] | None = None
 
         # Visuals
         try:
@@ -181,4 +182,36 @@ class CalibrationUI(QWidget):  # type: ignore[misc]
             painter.setBrush(QColor(255, 0, 0, 220))
             painter.setPen(QColor(255, 255, 255))
             painter.drawEllipse(x - r, y - r, r * 2, r * 2)
+        # Draw live gaze crosshair (if available)
+        try:
+            if self._live_xy is not None:
+                gx, gy = self._live_xy
+                # Crosshair lines
+                painter.setPen(QColor(0, 255, 0, 220))
+                painter.drawLine(gx - 18, gy, gx + 18, gy)
+                painter.drawLine(gx, gy - 18, gx, gy + 18)
+                # Small center dot
+                painter.setBrush(QColor(0, 255, 0, 160))
+                painter.drawEllipse(gx - 4, gy - 4, 8, 8)
+        except Exception:
+            pass
         painter.end()
+
+    # -----------------
+    # Live gaze API
+    # -----------------
+    def set_live_gaze(self, xy: Tuple[int, int] | None) -> None:
+        if xy is None:
+            self._live_xy = None
+        else:
+            try:
+                # Convert global screen coordinates to widget-local coordinates
+                pt = self.mapFromGlobal(QPoint(int(xy[0]), int(xy[1])))
+                self._live_xy = (int(pt.x()), int(pt.y()))
+            except Exception:
+                # Fallback: use provided coords directly
+                self._live_xy = (int(xy[0]), int(xy[1]))
+        try:
+            self.update()
+        except Exception:
+            pass

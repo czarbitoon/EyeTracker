@@ -102,11 +102,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         except Exception:
             pass
         v.addWidget(info)
-        v.addWidget(QLabel("Smoothing (EMA Alpha)"))
-        self.sld_alpha = QSlider(Qt.Orientation.Horizontal)
-        self.sld_alpha.setRange(1, 9)
-        self.sld_alpha.setValue(3)
-        v.addWidget(self.sld_alpha)
+        # Smoothing is fixed to Butterworth; no slider/UI
         # Eye selection
         v.addWidget(QLabel("Eye input"))
         self.cmb_eye = QComboBox()
@@ -115,6 +111,14 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         except Exception:
             pass
         v.addWidget(self.cmb_eye)
+        # Gaze engine toggle (lightweight CPU option)
+        v.addWidget(QLabel("Gaze Engine"))
+        self.cmb_gaze_engine = QComboBox()
+        try:
+            self.cmb_gaze_engine.addItems(["Landmark", "OpenVINO", "Hybrid"])
+        except Exception:
+            pass
+        v.addWidget(self.cmb_gaze_engine)
         # Live eye-signal indicator (strength of (nx, ny) motion)
         self.lbl_signal = QLabel("Eye signal: -- | Δnx: -- | Δny: --")
         try:
@@ -130,6 +134,7 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
             v.addWidget(self.signal_bars)
         try:
             self.cmb_eye.currentIndexChanged.connect(self._on_eye_changed)  # type: ignore[attr-defined]
+            self.cmb_gaze_engine.currentIndexChanged.connect(self._on_gaze_engine_changed)  # type: ignore[attr-defined]
         except Exception:
             pass
         # Live tuning for thresholds
@@ -333,6 +338,25 @@ class MainWindow(QMainWindow):  # type: ignore[misc]
         elif "Left" in txt:
             mode = "left"
         self.eyeModeChanged.emit(mode)  # type: ignore[attr-defined]
+
+    def _on_gaze_engine_changed(self):
+        try:
+            txt = self.cmb_gaze_engine.currentText()
+        except Exception:
+            txt = "Landmark"
+        if "OpenVINO" in txt:
+            eng = "openvino"
+        elif "Hybrid" in txt:
+            eng = "hybrid"
+        else:
+            eng = "landmark"
+        # Reuse settingsSaved signal pattern via AppCore
+        try:
+            # Store selected engine in status bar for feedback
+            self.statusBar().showMessage(f"Gaze engine: {txt}", 3000)
+        except Exception:
+            pass
+        # Emit a lightweight custom signal via status updates is not defined; AppCore will poll UI state.
 
     def set_signal_config(self, x_ok: float, x_strong: float, y_ok: float, y_strong: float, window: int) -> None:
         try:

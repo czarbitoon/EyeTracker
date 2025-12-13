@@ -63,7 +63,7 @@ class BlinkDetector:
         if ear is None or ear != ear:  # NaN check
             return "open"
 
-        now = time.time() * 1000.0
+        now = time.perf_counter() * 1000.0
 
         # Closed region
         if ear < self.blink_thresh:

@@ -25,6 +25,7 @@ class SettingsManager:
                 "camera_index": 0,
                 "smoothing": {"alpha": 0.25},
                 "eye": {"mode": "auto"},
+                "gaze": {"engine": "landmark"},
                 "calibration": {
                     "threshold_px": 150.0,
                     "robust_drop_percent": 25.0,
@@ -81,6 +82,13 @@ class SettingsManager:
 
     def smoothing_alpha(self) -> float:
         return float(self.data.get("smoothing", {}).get("alpha", 0.25))
+
+    # Gaze engine ------------------------------------------------------
+    def gaze_engine(self) -> str:
+        return str(self.data.get("gaze", {}).get("engine", "landmark"))
+
+    def set_gaze_engine(self, engine: str) -> None:
+        self.data.setdefault("gaze", {})["engine"] = str(engine)
 
     # Calibration settings --------------------------------------------
     def calib_threshold_px(self) -> float:

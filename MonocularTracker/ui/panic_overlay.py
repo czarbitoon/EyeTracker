@@ -15,8 +15,9 @@ except Exception:  # pragma: no cover
 
 
 class PanicOverlay(QWidget):  # type: ignore[misc]
-    def __init__(self):  # type: ignore[no-redef]
+    def __init__(self, panic_callback=None):  # type: ignore[no-redef]
         super().__init__()
+        self._panic_callback = panic_callback
         try:
             self.setWindowFlags(
                 Qt.WindowType.WindowStaysOnTopHint
@@ -55,7 +56,7 @@ class PanicOverlay(QWidget):  # type: ignore[misc]
 
     def _on_stop_clicked(self) -> None:
         try:
-            from MonocularTracker.app import trigger_panic
-            trigger_panic()
+            if callable(self._panic_callback):
+                self._panic_callback()
         except Exception:
             pass
