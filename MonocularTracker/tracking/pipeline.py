@@ -9,12 +9,12 @@ try:
 except Exception:  # pragma: no cover
     cv2 = None
 
-from MonocularTracker.camera import Camera
+from app.camera import Camera
 from .gaze_parser import GazeParser
 from .mapping import Mapping
 from .smoothing import ButterworthLowPass
 try:
-    from MonocularTracker.ai.openvino_gaze import OpenVinoGaze  # type: ignore
+    from app.ai.openvino_gaze import OpenVinoGaze  # type: ignore
 except Exception:
     OpenVinoGaze = None  # type: ignore
 

@@ -55,23 +55,23 @@ try:
 except Exception:
     pass
 
-from MonocularTracker.core.settings import SettingsManager
-from MonocularTracker.ui.main_window import MainWindow
-from MonocularTracker.ui.panic_overlay import PanicOverlay
-from MonocularTracker.ui.calibration_ui import CalibrationUI
-from MonocularTracker.ui.calibration_plots import CalibrationPlotsWindow
+from app.core.settings import SettingsManager
+from app.ui.main_window import MainWindow
+from app.ui.panic_overlay import PanicOverlay
+from app.ui.calibration_ui import CalibrationUI
+from app.ui.calibration_plots import CalibrationPlotsWindow
 try:
     # Prefer the enhanced camera settings dialog
-    from MonocularTracker.ui.camera_settings import CameraSettingsWindow  # type: ignore
+    from app.ui.camera_settings import CameraSettingsWindow  # type: ignore
 except Exception:  # pragma: no cover
     try:
-        from MonocularTracker.ui.camera_settings_panel import CameraSettingsWindow  # type: ignore
+        from app.ui.camera_settings_panel import CameraSettingsWindow  # type: ignore
     except Exception:
         CameraSettingsWindow = None  # type: ignore
-from MonocularTracker.tracking.camera_controller import CameraController
-from MonocularTracker.tracking.pipeline import Pipeline
-from MonocularTracker.control.cursor import CursorController
-from MonocularTracker.control.fps_monitor import FPSMonitor
+from app.tracking.camera_controller import CameraController
+from app.tracking.pipeline import Pipeline
+from app.control.cursor import CursorController
+from app.control.fps_monitor import FPSMonitor
 
 
 class AppCore:
@@ -208,7 +208,7 @@ class AppCore:
         try:
             calib_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "calibration_state.json")
             if os.path.exists(calib_path):
-                from MonocularTracker.tracking.calibration import Calibrator
+                from app.tracking.calibration import Calibrator
                 loaded = Calibrator.load(calib_path)
                 # Replace mapping calibrator with the loaded one
                 self.pipeline.map.calib = loaded

@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from MonocularTracker.core.app import main
+    from app.core.app import main
 except Exception as e:  # pragma: no cover
     print("Failed to import core app. Ensure dependencies are installed.")
     raise SystemExit(1)

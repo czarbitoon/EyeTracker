@@ -1,73 +1,40 @@
 from __future__ import annotations
 
-import sys
-from typing import Tuple
-
-# Minimal main wiring UI, camera, tracking
-# For migration, we reuse existing PyQt UI but drive tracking via app.tracking.monocular
-try:
-    from PyQt6.QtWidgets import QApplication
-except Exception:
-    QApplication = None  # type: ignore
-
-from app.tracking.monocular import MonocularTracker
-
-# Reuse existing UI window if available
-try:
-    from MonocularTracker.ui.main_window import MainWindow
-except Exception:
-    MainWindow = None  # type: ignore
+import cv2  # type: ignore
+from app.tracking.camera import Camera
+from app.tracking.detection import EyeDetector
 
 
-def main(screen_size: Tuple[int, int] = (1920, 1080)) -> None:
-    # Headless fallback if PyQt not installed
-    if QApplication is None or MainWindow is None:
-        tracker = MonocularTracker(camera_index=0, screen_size=screen_size, drift_enabled=True, drift_lr=0.01, eye_mode="auto")
-        tracker.start()
-        try:
-            for _ in range(300):  # run briefly
-                res = tracker.process()
-                if res.predicted_xy:
-                    x, y = res.predicted_xy
-                    print(f"Cursor: {x},{y}")
-        finally:
-            tracker.stop()
+def main() -> None:
+    cam = Camera()
+    detector = EyeDetector()
+    if not cam.start():
+        print("Failed to open camera.")
         return
 
-    app = QApplication(sys.argv)
-    win = MainWindow()
+    try:
+        while True:
+            ok, frame = cam.read()
+            if not ok:
+                break
 
-    tracker = MonocularTracker(camera_index=0, screen_size=screen_size, drift_enabled=True, drift_lr=0.01, eye_mode="auto")
+            result = detector.detect(frame)
+            if result.success:
+                for (x, y) in result.eye_centers:
+                    try:
+                        cv2.circle(frame, (int(x), int(y)), 5, (0, 255, 0), -1)
+                    except Exception:
+                        pass
 
-    def on_start():
-        tracker.start()
-
-    def on_stop():
-        tracker.stop()
-
-    def tick():
-        res = tracker.process()
-        # Update minimal status label
+            cv2.imshow("Detection Test", frame)
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+    finally:
+        cam.stop()
         try:
-            face = "OK" if res.face_ok else "--"
-            eye = "OK" if res.eye_ok else "--"
-            win.status_label.setText(f"Face: {face} | Eye: {eye} | FPS: {getattr(tracker.cam, 'target_fps', 30)}")
+            cv2.destroyAllWindows()
         except Exception:
             pass
-
-    try:
-        from PyQt6.QtCore import QTimer
-        t = QTimer()
-        t.timeout.connect(tick)  # type: ignore[attr-defined]
-        t.start(0)
-    except Exception:
-        pass
-
-    win.startRequested.connect(on_start)  # type: ignore[attr-defined]
-    win.stopRequested.connect(on_stop)  # type: ignore[attr-defined]
-
-    win.show()
-    app.exec()
 
 
 if __name__ == "__main__":
