@@ -146,15 +146,15 @@ class AppCore:
 
         # Setup pipeline
         screen_w, screen_h = self._screen_size()
-          self.pipeline = Pipeline(
+        self.pipeline = Pipeline(
             camera_index=self.settings.camera_index(),
             screen_size=(screen_w, screen_h),
             alpha=self.settings.smoothing_alpha(),
             drift_enabled=self.settings.drift_enabled(),
-              drift_lr=self.settings.drift_learn_rate(),
-              eye_mode=self.settings.eye_mode(),
-              gaze_engine=self.settings.gaze_engine(),
-              model_dir=os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+            drift_lr=self.settings.drift_learn_rate(),
+            eye_mode=self.settings.eye_mode(),
+            gaze_engine=self.settings.gaze_engine(),
+            model_dir=os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
         )
         self.tracking = False
         self._calibration_ui: Optional[CalibrationUI] = None
