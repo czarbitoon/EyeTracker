@@ -26,6 +26,8 @@ except Exception:
 
 RIGHT_IRIS_IDX = [474, 475, 476, 477]
 LEFT_IRIS_IDX = [469, 470, 471, 472]
+RIGHT_UPPER_LID_IDX = 386
+RIGHT_LOWER_LID_IDX = 374
 
 
 @dataclass
@@ -34,6 +36,8 @@ class DetectionResult:
     left_center: Optional[Tuple[float, float]]
     right_center: Optional[Tuple[float, float]]
     confidence: float
+    # Eye openness metric (active eye only for now) — normalized to frame height
+    right_openness: Optional[float] = None
 
     @property
     def eye_centers(self) -> Tuple[Tuple[float, float], ...]:
@@ -100,8 +104,14 @@ class EyeDetector:
             for i in indices:
                 try:
                     p = pts[i]
-                    xs.append(p.x * w)
-                    ys.append(p.y * h)
+                    # Convert normalized to pixel coordinates
+                    x_px = float(p.x * w)
+                    y_px = float(p.y * h)
+                    # Clamp to frame bounds (reject out-of-range samples)
+                    if not (0.0 <= x_px < w and 0.0 <= y_px < h):
+                        continue
+                    xs.append(x_px)
+                    ys.append(y_px)
                 except Exception:
                     return None
             if not xs or not ys:
@@ -116,15 +126,29 @@ class EyeDetector:
 
         right_c = _mean_xy(RIGHT_IRIS_IDX)
         left_c = _mean_xy(LEFT_IRIS_IDX)
+
+        # Compute right eye openness (upper/lower lid vertical distance), normalized by frame height
+        right_open: Optional[float] = None
+        try:
+            upper = pts[RIGHT_UPPER_LID_IDX]
+            lower = pts[RIGHT_LOWER_LID_IDX]
+            uy = float(upper.y * h)
+            ly = float(lower.y * h)
+            # If points within bounds, compute normalized absolute vertical distance
+            if 0.0 <= uy < h and 0.0 <= ly < h:
+                right_open = abs(ly - uy) / float(h)
+        except Exception:
+            right_open = None
         if right_c is None and left_c is None:
             return DetectionResult(False, None, None, 0.0)
-        # Basic confidence: presence of iris landmarks + normalized distance sanity
+        # Basic confidence: presence of iris landmarks + distance sanity
         conf = 0.5
         try:
             if right_c is not None and left_c is not None:
                 dx = abs(right_c[0] - left_c[0])
-                if dx > 5:  # eyes should be separated
+                dy = abs(right_c[1] - left_c[1])
+                if dx > max(5.0, 0.02 * w) and dy < 0.25 * h:
                     conf = 0.8
         except Exception:
             pass
-        return DetectionResult(True, left_c, right_c, conf)
+        return DetectionResult(True, left_c, right_c, conf, right_openness=right_open)
